@@ -1,0 +1,16 @@
+filename,note,tempo,pitch
+do_1,do,normal,normal
+do_2,do,normal,low
+do_3,do,normal,normal
+do_4,do,normal,high
+do_5,do,normal,low
+do_6,do,normal,normal
+do_7,do,fast,normal
+do_8,do,fast,low
+do_9,do,fast,high
+do_10,do,slow,low
+do_11,do,slow,high
+do_12,do,slow,normal
+do_13,do,fast,normal
+do_14,do,slow,low
+do_15,do,normal,high
