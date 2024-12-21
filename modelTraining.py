@@ -30,6 +30,24 @@ class AudioRNN(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        # Add dropout to the fully connected layer
+        self.fc = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(hidden_size, num_classes)
+        )
+
+    def forward(self, x):
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        out, _ = self.lstm(x, (h0, c0))
+        out = out[:, -1, :]  # Last time step
+        out = self.fc(out)
+        return out
+    def __init__(self, input_size, hidden_size, num_layers, num_classes):
+        super(AudioRNN, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
@@ -76,24 +94,10 @@ num_classes = len(pd.read_csv("train.csv")['note'].unique())
 
 model = AudioRNN(input_size, hidden_size, num_layers, num_classes).to(device)
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, weight_decay=1e-4)
 
 train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=pad_collate)
 val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, collate_fn=pad_collate)
-
-for epoch in range(20):
-    model.train()
-    total_loss = 0
-    for features, labels in train_loader:
-        features, labels = features.to(device), labels.to(device)
-        optimizer.zero_grad()
-        outputs = model(features)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-    print(f"Epoch {epoch+1}/{20}, Loss: {total_loss/len(train_loader):.4f}")
-
 
 def evaluate(model, val_loader):
     model.eval()
@@ -108,6 +112,33 @@ def evaluate(model, val_loader):
             correct += (predicted == labels).sum().item()
     return 100 * correct / total
 
-val_accuracy = evaluate(model, val_loader)
-print(f"Validation Accuracy: {val_accuracy:.2f}%")
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+
+if __name__ == "__main__":
+    for epoch in range(20):
+        model.train()
+        total_loss = 0
+        for features, labels in train_loader:
+            features, labels = features.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(features)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        # Evaluate on validation set
+        val_accuracy = evaluate(model, val_loader)
+        print(f"Epoch {epoch+1}/{20}, Loss: {total_loss/len(train_loader):.4f}, Val Accuracy: {val_accuracy:.2f}%")
+        
+        # Step the scheduler
+        scheduler.step(val_accuracy)
+
+
+
+    val_accuracy = evaluate(model, val_loader)
+    print(f"Validation Accuracy: {val_accuracy:.2f}%")
+
+    torch.save(model.state_dict(), "model.pth")
+    print("Model saved to model.pth")
 
